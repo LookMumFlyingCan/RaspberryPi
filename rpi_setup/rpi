@@ -1,0 +1,17 @@
+sudo apt install git initramfs-tools
+git clone https://github.com/chesty/overlayroot chesty
+
+shutdown now
+
+cd chesty
+./install.sh
+
+cd /usr/bin/
+wget https://raw.githubusercontent.com/chesty/overlayroot/master/rootwork
+sudo chmod a+x rootwork
+
+"""
+if [ ! -z "${IMCHROOTED}" ]; then
+        PS1="chroot(${IMCHROOTED})\w:# "
+fi
+""" -> .bashrc

@@ -1,0 +1,130 @@
+sudo apt install git initramfs-tools fish
+
+chsh -s /usr/bin/fish
+sudo chsh -s /usr/bin/fish
+
+relog
+
+nano /home/dietpi/.config/fish/config.fish
+
+sudo su
+exit
+
+sudo nano /root/.config/fish/config.fish
+
+"""
+/boot/dietpi/dietpi-login
+set PATH /usr/bin /bin /usr/sbin /sbin /usr/local/bin
+alias dietpi-letsencrypt='/boot/dietpi/dietpi-letsencrypt'
+alias dietpi-autostart='/boot/dietpi/dietpi-autostart'
+alias dietpi-cron='/boot/dietpi/dietpi-cron'
+alias dietpi-launcher='/boot/dietpi/dietpi-launcher'
+alias dietpi-cleaner='/boot/dietpi/dietpi-cleaner'
+alias dietpi-morsecode='/boot/dietpi/dietpi-morsecode'
+alias dietpi-sync='/boot/dietpi/dietpi-sync'
+alias dietpi-backup='/boot/dietpi/dietpi-backup'
+alias dietpi-bugreport='/boot/dietpi/dietpi-bugreport'
+alias dietpi-services='/boot/dietpi/dietpi-services'
+alias dietpi-config='/boot/dietpi/dietpi-config'
+alias dietpi-software='/boot/dietpi/dietpi-software'
+alias dietpi-update='/boot/dietpi/dietpi-update'
+alias dietpi-drive_manager='/boot/dietpi/dietpi-drive_manager'
+alias dietpi-logclear='/boot/dietpi/func/dietpi-logclear'
+alias dietpi-survey='/boot/dietpi/dietpi-survey'
+alias dietpi-explorer='/boot/dietpi/dietpi-explorer'
+alias dietpi-banner='/boot/dietpi/func/dietpi-banner 2'
+alias dietpi-justboom='/boot/dietpi/misc/dietpi-justboom'
+alias dietpi-led_control='/boot/dietpi/dietpi-led_control'
+alias dietpi-wifidb='/boot/dietpi/func/dietpi-wifidb'
+alias dietpi-optimal_mtu='/boot/dietpi/func/dietpi-optimal_mtu'
+alias dietpi-cloudshell='/boot/dietpi/dietpi-cloudshell'
+alias cpu='/boot/dietpi/dietpi-cpuinfo'
+""" -> config.fish
+
+mkdir /home/dietpi/.config/fish/functions
+sudo mkdir /root/.config/fish/functions
+
+nano /home/dietpi/.config/fish/functions/fish_prompt.fish
+"""
+function fish_prompt
+    if not set -q VIRTUAL_ENV_DISABLE_PROMPT
+        set -g VIRTUAL_ENV_DISABLE_PROMPT true
+    end
+    set_color yellow
+    printf '%s' $USER
+    set_color normal
+    printf ' at '
+
+    set_color magenta
+    echo -n (prompt_hostname)
+    set_color normal
+    printf ' in '
+
+    set_color $fish_color_cwd
+    printf '%s' (prompt_pwd)
+    set_color normal
+
+    printf ' access '
+
+    set_color blue
+    awk -v needle="/dev/mmcblk0p2" '$1==needle {printf $2}' /proc/mounts
+    set_color normal
+
+    # Line 2
+    echo
+    if test $VIRTUAL_ENV
+        printf "(%s) " (set_color blue)(basename $VIRTUAL_ENV)(set_color normal)
+    end
+    printf '↪ '
+    set_color normal
+end
+"""
+sudo nano /root/.config/fish/functions/fish_prompt.fish
+"""
+function fish_prompt
+    if not set -q VIRTUAL_ENV_DISABLE_PROMPT
+        set -g VIRTUAL_ENV_DISABLE_PROMPT true
+    end
+    set_color yellow
+    printf '%s' $USER
+    set_color normal
+    printf ' at '
+
+    set_color magenta
+    echo -n (prompt_hostname)
+    set_color normal
+    printf ' in '
+
+    set_color $fish_color_cwd
+    printf '%s' (prompt_pwd)
+    set_color normal
+
+    printf ' access '
+
+    set_color blue
+    awk -v needle="/dev/mmcblk0p2" '$1==needle {printf $2}' /proc/mounts
+    set_color normal
+
+    # Line 2
+    echo
+    if test $VIRTUAL_ENV
+        printf "(%s) " (set_color blue)(basename $VIRTUAL_ENV)(set_color normal)
+    end
+    set_color red
+    printf '*!* '
+    set_color normal
+end
+"""
+
+sudo nano /etc/systemd/system/dietpi-boot.service
+
+git clone https://github.com/chesty/overlayroot chesty
+
+cd chesty
+sudo ./install.sh
+
+cd /usr/bin/
+sudo wget https://raw.githubusercontent.com/chesty/overlayroot/master/rootwork
+sudo chmod a+x rootwork
+
+reboot
