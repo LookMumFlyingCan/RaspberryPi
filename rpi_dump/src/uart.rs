@@ -6,6 +6,8 @@ use serialport;
 use stoppable_thread;
 use spmc;
 
+const SEND_BUFFER_SIZE: usize = 128usize;
+
 pub struct Uart {
     pub decoder: Adsb,
     handle: Option<stoppable_thread::StoppableHandle<()>>,
@@ -110,11 +112,16 @@ impl Uart {
         Ok(stoppable_thread::spawn(move |stop| while !stop.get() {
             match crx.recv() {
                 Ok(x) => {
+                  let mut send_buffer: [u8; SEND_BUFFER_SIZE] = [0; SEND_BUFFER_SIZE];
                   for line in String::from_utf8_lossy(&x[..]).split('\n') {
                     if(match line.chars().nth(0usize) { Some(x) => x, None => continue } == '*') {
-                      rclone.write(line[1..line.len()-1].as_bytes());
-                      rclone.write( &['\n' as u8] );
-                      info!("read: {}", String::from_utf8_lossy(line[1..line.len()-1].as_bytes()));  
+                      info!("read: {}", String::from_utf8_lossy(line[1..line.len()-1].as_bytes()));
+
+                      for i in 0..line.len()-2 {
+                        send_buffer[i] = line.chars().nth(i+1).unwrap() as u8;
+                      }
+
+                      rclone.write( &send_buffer );
                     }
                   }
                 },
