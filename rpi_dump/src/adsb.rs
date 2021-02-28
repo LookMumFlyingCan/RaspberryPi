@@ -41,7 +41,7 @@ impl Adsb{
   }
 
   fn get_thread(path: String, gain: f32, freq: u32) -> Result<(Child, stoppable_thread::StoppableHandle<()>, spmc::Receiver<[u8; BUFFER_SIZE]>), &'static str> {
-    let (mut tx, mut rx): (spmc::Sender<[u8; BUFFER_SIZE]>, spmc::Receiver<[u8; BUFFER_SIZE]>) = spmc::channel();
+    let (mut tx, rx): (spmc::Sender<[u8; BUFFER_SIZE]>, spmc::Receiver<[u8; BUFFER_SIZE]>) = spmc::channel();
     let (ctx, crx): (mpsc::Sender<Child>, mpsc::Receiver<Child>) = mpsc::channel();
 
     let child_handle = stoppable_thread::spawn(move |stop| {
@@ -72,23 +72,30 @@ impl Adsb{
       match childerr.read(&mut errbuf) {
         Ok(_x) => if errbuf[0] == 70 {
           info!("dump1090 successfully found the device");
-          Ok(())
-        } else {
-          error!("dump1090 did not find the device, {}", errbuf[0]);
-
+          
           let mut buffer = [0; BUFFER_SIZE];
-          buffer[0] = ('*' as u8);
-          buffer[1] = ('D' as u8);
-          buffer[2] = ('E' as u8);
+          buffer[0] = '*' as u8;
+          buffer[1] = 'D' as u8;
+          buffer[2] = 'I' as u8;
           
           match tx.send(buffer) {
             Ok(x) => x,
             Err(x) => {error!("failed to pass dump1090 data over mpsc: {}", x); return; }
           };
-          //std::process::exit(1);
-          Err("device unavailable")
+        } else {
+          error!("dump1090 did not find the device, {}", errbuf[0]);
+
+          let mut buffer = [0; BUFFER_SIZE];
+          buffer[0] = '*' as u8;
+          buffer[1] = 'D' as u8;
+          buffer[2] = 'E' as u8;
+          
+          match tx.send(buffer) {
+            Ok(x) => x,
+            Err(x) => {error!("failed to pass dump1090 data over mpsc: {}", x); return; }
+          };
         },
-        Err(x) => {error!("cannot read from dump1090: {}", x); Err("dump not responding")}
+        Err(x) => {error!("cannot read from dump1090: {}", x);}
       };
 
       match ctx.send(child) {
@@ -100,15 +107,6 @@ impl Adsb{
         let mut buffer = [0; BUFFER_SIZE];
 
         if stop.get() { 
-          buffer[0] = ('*' as u8);
-          buffer[1] = ('D' as u8);
-          buffer[2] = ('R' as u8);
-
-          match tx.send(buffer) {
-            Ok(x) => x,
-            Err(x) => {error!("failed to pass dump1090 data over mpsc: {}", x); return; }
-          };
-
           break; 
         }
 

@@ -2,6 +2,7 @@ use crate::adsb::Adsb;
 use std::boxed;
 use std::time::Duration;
 use std::io;
+use std::sync::mpsc;
 use serialport;
 use stoppable_thread;
 use spmc;
@@ -11,43 +12,56 @@ const SEND_BUFFER_SIZE: usize = 128usize;
 pub struct Uart {
     pub decoder: Adsb,
     handle: Option<stoppable_thread::StoppableHandle<()>>,
-    port: boxed::Box<dyn serialport::SerialPort>
+    port: boxed::Box<dyn serialport::SerialPort>,
+    hook: mpsc::Sender<bool>
 }
 
 impl Uart {
     pub fn new(dec: Adsb, name: &str, baudrate: u32) -> Result<Self, &'static str>{
       let crx = dec.child.clone();
+      let (hooktx, hookrx): (mpsc::Sender<bool>, mpsc::Receiver<bool>) = mpsc::channel();
+
       match serialport::new(name, baudrate)
-        .timeout(Duration::from_millis(100))
+        .timeout(Duration::from_millis(5))
         .open() {
           Ok(x) => {
             let mut rclone: boxed::Box<dyn serialport::SerialPort> = match x.try_clone(){
-              Err(y) => {
+              Err(_y) => {
                 error!("failed to clone serial port");
                 Err("Failed to clone serial port")
               },
               Ok(y) => Ok(y)
             }?;
             Ok(
-              Uart { port: x, decoder: dec, handle: Some(Uart::get_output_thread(crx, &mut rclone)?) } 
+              Uart { port: x, decoder: dec, handle: Some(Uart::get_output_thread(crx, &mut rclone, hookrx)?), hook: hooktx } 
             )},
-          Err(x) => {
+          Err(_x) => {
             error!("failed to open serial port {}", name); Err("serial port failed")
           }      
       }
     }
 
     pub fn reset(&mut self, path: String, gain: f32, freq: u32) -> Result<(), &'static str> {
-        match self.handle.take() {
-            Some(t) => {t.stop(); Ok(())},
-            None => { Err("failed to stop worker thread, did you initialize??") }
-        }?;
+      let (hooktx, hookrx): (mpsc::Sender<bool>, mpsc::Receiver<bool>) = mpsc::channel();
 
-        self.decoder.reset(path, gain, freq)?;
+      match self.handle.take() {
+          Some(t) => {t.stop(); Ok(())},
+          None => { Err("failed to stop worker thread, did you initialize??") }
+      }?;
 
-        self.handle = Some(Uart::get_output_thread(self.decoder.child.clone(), &mut self.port)?);
+      self.decoder.reset(path, gain, freq)?;
 
-        Ok(())
+      self.hook = hooktx;
+      self.handle = Some(Uart::get_output_thread(self.decoder.child.clone(), &mut self.port, hookrx)?);
+
+      Ok(())
+    }
+
+    pub fn feed(&mut self) -> Result<(), &'static str>  {
+      match self.hook.send(true){
+        Err(_) => Err("failed to activate hook"),
+        _ => Ok(())
+      }
     }
 
     pub fn reciever(&mut self, path: String, gain: f32, freq: u32) {
@@ -59,7 +73,7 @@ impl Uart {
           Ok(len) => {
             match pbuff[0] {
               85 /* U */ => {
-                let mut bufferu: String = String::from_utf8_lossy(&pbuff[..len-1]).to_string();
+                let bufferu: String = String::from_utf8_lossy(&pbuff[..len-1]).to_string();
                 let command = bufferu.split(' ').collect::<Vec<&str>>();
 
                 if command.len() < 3 {
@@ -84,6 +98,7 @@ impl Uart {
                 self.reset(path.clone(), lgain, lfreq)
               },
               82 /* R */ => { info!("resetting the adsb decoder"); self.reset(path.clone(), lgain, lfreq) },
+              70 /* F */ => { info!("feeding new frame"); match self.feed() { Err(x) => error!("{}", x), _ => {} }; Ok(()) },
               83 /* S */ => {
                 //reset usb
                 Ok(())
@@ -92,7 +107,7 @@ impl Uart {
                 error!("unrecognized command");
                 Ok(())
               }
-            };
+            }.unwrap();
           },
           Err(ref e) if e.kind() == io::ErrorKind::TimedOut => (),
           Err(e) => error!("serial port recive failed {:?}", e)
@@ -100,9 +115,9 @@ impl Uart {
       }
     }
 
-    fn get_output_thread(crx: spmc::Receiver<[u8; crate::adsb::BUFFER_SIZE]>, port: &mut boxed::Box<dyn serialport::SerialPort>) -> Result<stoppable_thread::StoppableHandle<()>, &'static str>{
+    fn get_output_thread(crx: spmc::Receiver<[u8; crate::adsb::BUFFER_SIZE]>, port: &mut boxed::Box<dyn serialport::SerialPort>, hook: mpsc::Receiver<bool>) -> Result<stoppable_thread::StoppableHandle<()>, &'static str>{
         let mut rclone: boxed::Box<dyn serialport::SerialPort> = match port.try_clone(){
-          Err(x) => {
+          Err(_x) => {
             error!("failed to clone serial port");
             Err("failed to clone serial port")
           },
@@ -110,23 +125,43 @@ impl Uart {
         }?;
 
         Ok(stoppable_thread::spawn(move |stop| while !stop.get() {
-            match crx.recv() {
-                Ok(x) => {
-                  let mut send_buffer: [u8; SEND_BUFFER_SIZE] = [0; SEND_BUFFER_SIZE];
-                  for line in String::from_utf8_lossy(&x[..]).split('\n') {
-                    if(match line.chars().nth(0usize) { Some(x) => x, None => continue } == '*') {
-                      info!("read: {}", String::from_utf8_lossy(line[1..line.len()-1].as_bytes()));
+          match hook.recv() {
 
-                      for i in 0..line.len()-2 {
-                        send_buffer[i] = line.chars().nth(i+1).unwrap() as u8;
+            Ok(_) => {
+              let mut send_buffer: [u8; SEND_BUFFER_SIZE] = [0; SEND_BUFFER_SIZE];
+
+              match crx.try_recv() {
+
+                  Ok(x) => {
+                    for line in String::from_utf8_lossy(&x[..]).split('\n') {
+                      if(match line.chars().nth(0usize) { Some(x) => x, None => continue } == '*') {
+                        info!("read: {}", String::from_utf8_lossy(line[1..line.len()-1].as_bytes()));
+
+                        for i in 0..line.len()-2 {
+                          send_buffer[i] = line.chars().nth(i+1).unwrap() as u8;
+                        }
+
+                        match rclone.write( &send_buffer ) {
+                          Ok(_x) => {},
+                          Err(_x) => error!("{}", _x)
+                        };
                       }
-
-                      rclone.write( &send_buffer );
                     }
+                  },
+                  Err(_) => {
+                    send_buffer[0] = 'N' as u8;
+                    send_buffer[1] = 'D' as u8;
+
+                    match rclone.write( &send_buffer ) {
+                      Ok(_x) => {},
+                      Err(_x) => error!("{}", _x)
+                    };
                   }
-                },
-                _ => {}
-            };
-        }))
+
+              };
+            },
+            _ => {}
+
+        }}))
     }
 }

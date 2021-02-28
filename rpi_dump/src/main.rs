@@ -5,7 +5,6 @@ mod uart;
 use crate::config::Config;
 use crate::adsb::Adsb;
 use crate::uart::Uart;
-use std::io::{self, BufRead};
 
 extern crate pretty_env_logger;
 #[macro_use] extern crate log;
@@ -16,7 +15,9 @@ fn main() {
   pretty_env_logger::env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
   let config = Config::load("config.json");
-  let mut adsb = match Adsb::new("/home/h39/Downloads/dump1090/dump1090".to_string(), config.gain, config.freq) {
+
+  let path = config.path.clone();
+  let adsb = match Adsb::new(path, config.gain, config.freq) {
     Ok(x) => x,
     Err(x) => {error!("Adsb decoder start failed: {}", x); return;}
   };
