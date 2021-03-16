@@ -3,13 +3,16 @@ use std::sync::mpsc;
 use std::io::Read;
 use std::result::Result;
 use std::process::Child;
+use std::str;
 use stoppable_thread;
 use spmc;
+
+extern crate hex;
 
 pub const BUFFER_SIZE: usize = 128;
 
 pub struct Adsb {
-  pub child: spmc::Receiver<[u8; BUFFER_SIZE]>,
+  pub child: spmc::Receiver<Vec<u8>>,
   handle: Option<stoppable_thread::StoppableHandle<()>>,
   killer: Child
 }
@@ -40,8 +43,8 @@ impl Adsb{
     Ok(())
   }
 
-  fn get_thread(path: String, gain: f32, freq: u32) -> Result<(Child, stoppable_thread::StoppableHandle<()>, spmc::Receiver<[u8; BUFFER_SIZE]>), &'static str> {
-    let (mut tx, rx): (spmc::Sender<[u8; BUFFER_SIZE]>, spmc::Receiver<[u8; BUFFER_SIZE]>) = spmc::channel();
+  fn get_thread(path: String, gain: f32, freq: u32) -> Result<(Child, stoppable_thread::StoppableHandle<()>, spmc::Receiver<Vec<u8>>), &'static str> {
+    let (mut tx, rx): (spmc::Sender<Vec<u8>>, spmc::Receiver<Vec<u8>>) = spmc::channel();
     let (ctx, crx): (mpsc::Sender<Child>, mpsc::Receiver<Child>) = mpsc::channel();
 
     let child_handle = stoppable_thread::spawn(move |stop| {
@@ -73,10 +76,7 @@ impl Adsb{
         Ok(_x) => if errbuf[0] == 70 {
           info!("dump1090 successfully found the device");
           
-          let mut buffer = [0; BUFFER_SIZE];
-          buffer[0] = '*' as u8;
-          buffer[1] = 'D' as u8;
-          buffer[2] = 'I' as u8;
+          let mut buffer = vec!['D' as u8, 'I' as u8];
           
           match tx.send(buffer) {
             Ok(x) => x,
@@ -85,10 +85,7 @@ impl Adsb{
         } else {
           error!("dump1090 did not find the device, {}", errbuf[0]);
 
-          let mut buffer = [0; BUFFER_SIZE];
-          buffer[0] = '*' as u8;
-          buffer[1] = 'D' as u8;
-          buffer[2] = 'E' as u8;
+          let mut buffer = vec!['D' as u8, 'E' as u8];
           
           match tx.send(buffer) {
             Ok(x) => x,
@@ -117,12 +114,22 @@ impl Adsb{
 
         if buffer[0] == 0 {
           continue;
-        }        
+        }
 
-        match tx.send(buffer) {
-          Ok(x) => x,
-          Err(x) => {error!("failed to pass dump1090 data over mpsc: {}", x); return; }
-        };
+        for line in String::from_utf8_lossy(&buffer[..]).split('\n') {
+          if line.len() == 0 || line.len() % 2 == 1 || line.chars().nth(0usize).unwrap() == '\u{0}' {
+            continue;
+          }
+
+          match tx.send(
+                  match hex::decode( 
+                      &line[1..line.len()-1]
+                    ) { Ok(x) => x, Err(x) => { error!("hex decode failed: {:?}", x); vec![] } } 
+                  ) {
+            Ok(x) => x,
+            Err(x) => {error!("failed to pass dump1090 data over mpsc: {}", x); return; }
+          }; 
+        }
     }});
 
     match crx.recv() {

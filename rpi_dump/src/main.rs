@@ -11,21 +11,23 @@ extern crate pretty_env_logger;
 use pretty_env_logger::env_logger;
 
 fn main() {
-  // Set the log level to be maximal and init logger
+  // set the log level to be maximal and init logger
   pretty_env_logger::env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+  // load the config
   let config = Config::load("config.json");
 
+  // memcpy the dump1090 path
   let path = config.path.clone();
+
+  // create a adsb handler
   let adsb = match Adsb::new(path, config.gain, config.freq) {
     Ok(x) => x,
     Err(x) => {error!("Adsb decoder start failed: {}", x); return;}
   };
-  let mut had = Uart::new(adsb, &config.terminal[..], config.baudrate).unwrap();
 
-  /*let stdin = io::stdin();
-  for line in stdin.lock().lines() {
-    had.reset("/home/h39/Downloads/dump1090/dump1090".to_string(), line.unwrap().to_string().parse::<f32>().unwrap(), config.freq);
-  }*/
-  had.reciever(config.path, config.gain, config.freq);
+  // create and start a serial transmitter
+  let mut serial = Uart::new(adsb, &config.terminal[..], config.baudrate).unwrap();
+  // make a serial reciever from the main thread since we dont need it anymore
+  serial.reciever(config.path, config.gain, config.freq);
 }

@@ -115,7 +115,7 @@ impl Uart {
       }
     }
 
-    fn get_output_thread(crx: spmc::Receiver<[u8; crate::adsb::BUFFER_SIZE]>, port: &mut boxed::Box<dyn serialport::SerialPort>, hook: mpsc::Receiver<bool>) -> Result<stoppable_thread::StoppableHandle<()>, &'static str>{
+    fn get_output_thread(crx: spmc::Receiver<Vec<u8>>, port: &mut boxed::Box<dyn serialport::SerialPort>, hook: mpsc::Receiver<bool>) -> Result<stoppable_thread::StoppableHandle<()>, &'static str>{
         let mut rclone: boxed::Box<dyn serialport::SerialPort> = match port.try_clone(){
           Err(_x) => {
             error!("failed to clone serial port");
@@ -131,33 +131,29 @@ impl Uart {
               let mut send_buffer: [u8; SEND_BUFFER_SIZE] = [0; SEND_BUFFER_SIZE];
 
               match crx.try_recv() {
-
                   Ok(x) => {
-                    for line in String::from_utf8_lossy(&x[..]).split('\n') {
-                      if(match line.chars().nth(0usize) { Some(x) => x, None => continue } == '*') {
-                        info!("read: {}", String::from_utf8_lossy(line[1..line.len()-1].as_bytes()));
-
-                        for i in 0..line.len()-2 {
-                          send_buffer[i] = line.chars().nth(i+1).unwrap() as u8;
-                        }
-
-                        match rclone.write( &send_buffer ) {
-                          Ok(_x) => {},
-                          Err(_x) => error!("{}", _x)
-                        };
-                      }
+                    send_buffer[0] = '*' as u8;
+                    for i in 0..x.len() {
+                      send_buffer[i+1] = x[i];
                     }
+
+                    info!("read: {:?}", &send_buffer);
+
+                    match rclone.write( &send_buffer ) {
+                      Ok(_x) => {},
+                      Err(_x) => error!("{}", _x)
+                    };
                   },
-                  Err(_) => {
-                    send_buffer[0] = 'N' as u8;
-                    send_buffer[1] = 'D' as u8;
+                  Err(_) => { 
+                    send_buffer[0] = '*' as u8;
+                    send_buffer[1] = 'N' as u8;
+                    send_buffer[2] = 'D' as u8;
 
                     match rclone.write( &send_buffer ) {
                       Ok(_x) => {},
                       Err(_x) => error!("{}", _x)
                     };
                   }
-
               };
             },
             _ => {}
