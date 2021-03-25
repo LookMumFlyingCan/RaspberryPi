@@ -76,18 +76,14 @@ impl Adsb{
         Ok(_x) => if errbuf[0] == 70 {
           info!("dump1090 successfully found the device");
           
-          let mut buffer = vec!['D' as u8, 'I' as u8];
-          
-          match tx.send(buffer) {
+          match tx.send(vec!['^' as u8, 'D' as u8, 'I' as u8]) {
             Ok(x) => x,
             Err(x) => {error!("failed to pass dump1090 data over mpsc: {}", x); return; }
           };
         } else {
           error!("dump1090 did not find the device, {}", errbuf[0]);
-
-          let mut buffer = vec!['D' as u8, 'E' as u8];
           
-          match tx.send(buffer) {
+          match tx.send(vec!['^' as u8, 'D' as u8, 'E' as u8]) {
             Ok(x) => x,
             Err(x) => {error!("failed to pass dump1090 data over mpsc: {}", x); return; }
           };
@@ -121,11 +117,14 @@ impl Adsb{
             continue;
           }
 
-          match tx.send(
-                  match hex::decode( 
-                      &line[1..line.len()-1]
-                    ) { Ok(x) => x, Err(x) => { error!("hex decode failed: {:?}", x); vec![] } } 
-                  ) {
+          let mut send_buffer =
+                      match hex::decode(
+                        &line[1..line.len()-1]
+                      ) { Ok(x) => x, Err(x) => { error!("hex decode failed: {:?}", x); vec![] } };
+
+          send_buffer.insert(0, '*' as u8);
+
+          match tx.send(send_buffer) {
             Ok(x) => x,
             Err(x) => {error!("failed to pass dump1090 data over mpsc: {}", x); return; }
           }; 

@@ -7,7 +7,7 @@ use serialport;
 use stoppable_thread;
 use spmc;
 
-const SEND_BUFFER_SIZE: usize = 128usize;
+const SEND_BUFFER_SIZE: usize = 32usize;
 
 pub struct Uart {
     pub decoder: Adsb,
@@ -27,8 +27,7 @@ impl Uart {
           Ok(x) => {
             let mut rclone: boxed::Box<dyn serialport::SerialPort> = match x.try_clone(){
               Err(_y) => {
-                error!("failed to clone serial port");
-                Err("Failed to clone serial port")
+                Err("failed to clone serial port")
               },
               Ok(y) => Ok(y)
             }?;
@@ -36,7 +35,7 @@ impl Uart {
               Uart { port: x, decoder: dec, handle: Some(Uart::get_output_thread(crx, &mut rclone, hookrx)?), hook: hooktx } 
             )},
           Err(_x) => {
-            error!("failed to open serial port {}", name); Err("serial port failed")
+            Err(Box::leak(format!("failed to open serial port {}", name).into_boxed_str()))
           }      
       }
     }
@@ -98,7 +97,7 @@ impl Uart {
                 self.reset(path.clone(), lgain, lfreq)
               },
               82 /* R */ => { info!("resetting the adsb decoder"); self.reset(path.clone(), lgain, lfreq) },
-              70 /* F */ => { info!("feeding new frame"); match self.feed() { Err(x) => error!("{}", x), _ => {} }; Ok(()) },
+              70 /* F */ => { info!("feeding new frame"); self.feed() },
               83 /* S */ => {
                 //reset usb
                 Ok(())
@@ -118,7 +117,6 @@ impl Uart {
     fn get_output_thread(crx: spmc::Receiver<Vec<u8>>, port: &mut boxed::Box<dyn serialport::SerialPort>, hook: mpsc::Receiver<bool>) -> Result<stoppable_thread::StoppableHandle<()>, &'static str>{
         let mut rclone: boxed::Box<dyn serialport::SerialPort> = match port.try_clone(){
           Err(_x) => {
-            error!("failed to clone serial port");
             Err("failed to clone serial port")
           },
           Ok(x) => Ok(x)
@@ -132,9 +130,8 @@ impl Uart {
 
               match crx.try_recv() {
                   Ok(x) => {
-                    send_buffer[0] = '*' as u8;
                     for i in 0..x.len() {
-                      send_buffer[i+1] = x[i];
+                      send_buffer[i] = x[i];
                     }
 
                     info!("read: {:?}", &send_buffer);
@@ -145,7 +142,7 @@ impl Uart {
                     };
                   },
                   Err(_) => { 
-                    send_buffer[0] = '*' as u8;
+                    send_buffer[0] = '^' as u8;
                     send_buffer[1] = 'N' as u8;
                     send_buffer[2] = 'D' as u8;
 

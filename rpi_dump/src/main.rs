@@ -23,11 +23,15 @@ fn main() {
   // create a adsb handler
   let adsb = match Adsb::new(path, config.gain, config.freq) {
     Ok(x) => x,
-    Err(x) => {error!("Adsb decoder start failed: {}", x); return;}
+    Err(x) => {error!("adsb decoder start failed: {}", x); return;}
   };
 
   // create and start a serial transmitter
-  let mut serial = Uart::new(adsb, &config.terminal[..], config.baudrate).unwrap();
+  let mut serial = match Uart::new(adsb, &config.terminal[..], config.baudrate) {
+    Ok(x) => x,
+    Err(x) => {error!("serial handler start failed: {}", x); return;}
+  };
+
   // make a serial reciever from the main thread since we dont need it anymore
   serial.reciever(config.path, config.gain, config.freq);
 }
