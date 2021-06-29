@@ -1,0 +1,1 @@
+/home/h49/Documents/temp_del/RaspberryPi/rpi_dump/target/debug/rpi_dump: /home/h49/Documents/temp_del/RaspberryPi/rpi_dump/src/adsb.rs /home/h49/Documents/temp_del/RaspberryPi/rpi_dump/src/config.rs /home/h49/Documents/temp_del/RaspberryPi/rpi_dump/src/main.rs /home/h49/Documents/temp_del/RaspberryPi/rpi_dump/src/uart.rs build.rs

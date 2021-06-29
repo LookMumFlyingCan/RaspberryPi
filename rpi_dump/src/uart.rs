@@ -32,11 +32,11 @@ impl Uart {
               Ok(y) => Ok(y)
             }?;
             Ok(
-              Uart { port: x, decoder: dec, handle: Some(Uart::get_output_thread(crx, &mut rclone, hookrx)?), hook: hooktx } 
+              Uart { port: x, decoder: dec, handle: Some(Uart::get_output_thread(crx, &mut rclone, hookrx)?), hook: hooktx }
             )},
           Err(_x) => {
             Err(Box::leak(format!("failed to open serial port {}", name).into_boxed_str()))
-          }      
+          }
       }
     }
 
@@ -85,14 +85,14 @@ impl Uart {
                   Err(_y) => {
                     error!("invalid float received");
                     continue;
-                  } 
+                  }
                 };
                 lfreq = match command[2].parse::<u32>() {
                   Ok(x) => x,
                   Err(y) => {
                     error!("invalid int received {} {}", y, command[2]);
                     continue;
-                  } 
+                  }
                 }; info!("setting gain to: {} and frequency to: {}", gain, freq);
                 self.reset(path.clone(), lgain, lfreq)
               },
@@ -101,7 +101,7 @@ impl Uart {
               83 /* S */ => {
                 //reset usb
                 Ok(())
-              }, 
+              },
               _ => {
                 error!("unrecognized command");
                 Ok(())
@@ -122,39 +122,54 @@ impl Uart {
           Ok(x) => Ok(x)
         }?;
 
-        Ok(stoppable_thread::spawn(move |stop| while !stop.get() {
-          match hook.recv() {
+        Ok(stoppable_thread::spawn(move |stop| {
+            let mut alt_buffer: [u8; SEND_BUFFER_SIZE] = [0; SEND_BUFFER_SIZE];
+            while !stop.get() {
 
-            Ok(_) => {
-              let mut send_buffer: [u8; SEND_BUFFER_SIZE] = [0; SEND_BUFFER_SIZE];
+              match hook.recv() {
 
-              match crx.try_recv() {
-                  Ok(x) => {
-                    for i in 0..x.len() {
-                      send_buffer[i] = x[i];
-                    }
+                Ok(_) => {
+                  let mut send_buffer: [u8; SEND_BUFFER_SIZE] = [0; SEND_BUFFER_SIZE];
 
-                    info!("read: {:?}", &send_buffer);
 
-                    match rclone.write( &send_buffer ) {
-                      Ok(_x) => {},
-                      Err(_x) => error!("{}", _x)
-                    };
-                  },
-                  Err(_) => { 
-                    send_buffer[0] = '^' as u8;
-                    send_buffer[1] = 'N' as u8;
-                    send_buffer[2] = 'D' as u8;
+                  match crx.try_recv() {
+                      Ok(x) => {
+                        for i in 0..x.len() {
+                          send_buffer[i] = x[i];
+                        }
 
-                    match rclone.write( &send_buffer ) {
-                      Ok(_x) => {},
-                      Err(_x) => error!("{}", _x)
-                    };
-                  }
-              };
-            },
-            _ => {}
+                        info!("read: {:?}", &send_buffer);
 
-        }}))
+                        if (send_buffer[0] == ('^' as u8)) && (send_buffer[2] == ('I' as u8)) {
+                          alt_buffer[0] = '^' as u8;
+                          alt_buffer[1] = 'N' as u8;
+                          alt_buffer[2] = 'D' as u8;
+                        } else if send_buffer[0] == ('^' as u8) {
+                          for i in 0..3 {
+                            alt_buffer[i] = send_buffer[i];
+                          }
+                        }
+
+                        match rclone.write( &send_buffer ) {
+                          Ok(_x) => {},
+                          Err(_x) => error!("{}", _x)
+                        };
+                      },
+                      Err(_) => {
+                          for i in 0..3 {                             
+                            send_buffer[i] = alt_buffer[i];
+                          }
+
+
+                        match rclone.write( &send_buffer ) {
+                          Ok(_x) => {},
+                          Err(_x) => error!("{}", _x)
+                        };
+                      }
+                  };
+                },
+                _ => {}
+
+        }}}))
     }
 }

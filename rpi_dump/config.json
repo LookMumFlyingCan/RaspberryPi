@@ -1,6 +1,6 @@
 {
-  "path": "/home/h39/Downloads/dump1090/dump1090",
-  "terminal": "/dev/pts/5",
+  "path": "/home/h49/Downloads/dump1090/dump1090",
+  "terminal": "/dev/pts/6",
   "baudrate": 9600,
   "gain": 49,
   "freq": 1090000000
