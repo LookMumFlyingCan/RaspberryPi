@@ -1,7 +1,7 @@
 import serial
 import time
 
-s = serial.Serial('/dev/pts/4')
+s = serial.Serial('/dev/pts/3')
 
 lines = """8D40621D58C386435CC412692AD6
 8D40621D58C382D690C8AC2863A7
