@@ -145,14 +145,14 @@ impl Uart {
 
                             if !x {
                                 let mut stringcpu: String = format!("");
-                                match io::BufReader::new(match File::open("/sys/class/thermal/thermal_zone0/temp") { Ok(x) => x, _ => continue }).read_line(&mut stringcpu) {
-                                    Err(_) => continue,
+                                match io::BufReader::new(match File::open("/sys/class/thermal/thermal_zone0/temp") { Ok(x) => x, Err(x) => {error!("{}", x); continue;} }).read_line(&mut stringcpu) {
+                                    Err(x) => {error!("{}", x); continue;}
                                     _ => {}
                                 };
 
-                                let cpu_temp = (match stringcpu.parse::<f32>() {
+                                let cpu_temp = (match stringcpu[..stringcpu.len() - 1].parse::<f32>() {
                                     Ok(x) => x,
-                                    _ => continue
+                                    Err(x) => {error!("{}", x); continue;}
                                 } / 1000.).to_le_bytes();
 
                                 let scpu_temp = stringcpu.as_bytes();
