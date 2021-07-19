@@ -125,6 +125,8 @@ impl Adsb{
 
                     send_buffer.insert(0, '*' as u8);
 
+                    info!("success! decoded: {:?}", send_buffer);
+
                     match tx.send(send_buffer) {
                         Ok(x) => x,
                         Err(x) => {error!("failed to pass dump1090 data over mpsc: {}", x); return; }
