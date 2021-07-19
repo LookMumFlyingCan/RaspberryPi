@@ -6,11 +6,10 @@ use std::sync::mpsc;
 use serialport;
 use stoppable_thread;
 use spmc;
+use std::fs::File;
+use std::io::BufRead;
 
 const SEND_BUFFER_SIZE: usize = 32usize;
-
-extern crate systemstat;
-use systemstat::{System, Platform, saturating_sub_bytes};
 
 pub struct Uart {
     pub decoder: Adsb,
@@ -145,16 +144,17 @@ impl Uart {
                             let mut send_buffer: [u8; SEND_BUFFER_SIZE] = [0; SEND_BUFFER_SIZE];
 
                             if !x {
-                                let sys = System::new();
-                                let cpu_temp = match sys.cpu_temp(){
-                                    Ok(x) => x,
-                                    _ => continue
-                                }.to_le_bytes();
+                                let mut stringcpu: String = format!("");
+                                match io::BufReader::new(match File::open("/sys/class/thermal/thermal_zone0/temp") { Ok(x) => x, Err(x) => {error!("{}", x); continue;} }).read_line(&mut stringcpu) {
+                                    Err(x) => {error!("{}", x); continue;}
+                                    _ => {}
+                                };
 
-                                let stringcpu = match sys.cpu_temp(){
+                                let cpu_temp = (match stringcpu[..stringcpu.len() - 1].parse::<f32>() {
                                     Ok(x) => x,
-                                    _ => continue
-                                }.to_string();
+                                    Err(x) => {error!("{}", x); continue;}
+                                } / 1000.).to_le_bytes();
+
                                 let scpu_temp = stringcpu.as_bytes();
 
                                 send_buffer[0] = 'T' as u8;
